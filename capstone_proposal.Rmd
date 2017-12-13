@@ -1,0 +1,33 @@
+---
+title: "Capstone Proposal"
+output: html_notebook
+author: Ryan Willett
+---
+#Gene expression signature analysis of 5 tumor types from the PANCAN Project
+
+###Introduction
+In the course of this project, I will analyze the gene expression cancer [RNA-Seq dataset](https://archive.ics.uci.edu/ml/datasets/gene+expression+cancer+RNA-Seq) submitted to the UCI Machine Learning Repository. This is a multivariate subset of the PANCAN project containing gene expression data from 5 tumor types analyzed by RNA-seq. The full data from this project is published in the paper **The Cancer Genome Atlas Pan-Cancer analysis project** (Weinstein et al, *Nature* 2013) and all data has been made public at the [Synapse repository](https://www.synapse.org/#!Synapse:syn4301332). 
+
+Broadly speaking, cancer is a family of diseases that arise in multiple tissue types of the body that have the shared feature of uncontrolled cell division that invade the boundaries of organs and migrate to secondary sites within the body. 
+
+While the wider scope of the PANCAN project sought to identify significant features of molecular dysfunction in these tumors at the DNA, RNA, protein, and epigenetic level, our analysis will initially focus on the insight provided by the RNA-Seq data alone.
+
+This project would identify gene expression changes and potentially attribute classes within groups of these genes that are specific to particular tumor classes. These gene expression changes fall into two category: 1) driver mutations and 2) passenger mutations. Driver mutations are genetic changes that contribute to the etiology of the disease, transformation of a cell of origin to a oncogenic state, and exacerbation of the initial tumor to become a more aggressive tumor with poorer prognosis. Since the dataset I am analyzing includes RNA expression data, the project will not identify these driver/passenger mutations themselves, but rather the genetic "programming" issues that arise from these mutations. 
+
+###The market significance
+The client that would be interested in this analysis could come from several sources. Fundementally a basic research project, the client would be either a pharmaceutical company, biotech, or academic research hospital. The gene expression changes and attributes identified by the project would be used for two purposes: 1) selection for druggable therapeutic targets for different cancer types, 2) biomarker identification which would aid in better tumor classiciation by pathologists. 
+
+###Data Sourcing
+The [UCI respository] (https://archive.ics.uci.edu/ml/datasets/gene+expression+cancer+RNA-Seq) contains the RNA-Seq measurements of 20531 genes from 801 tumor of 12 different tumor types. Each gene in the set  is renamed with a dummy name in the original dataset. I need to de-anonymize these genes to be able to pair these probes from the RNA-Seq data to additional data we can glean from public repositories on these genes. In the [Synapse repository](https://www.synapse.org/#!Synapse:syn4301332), the file unc.edu_PANCAN_IlluminaGA_RNASeqV2.geneExp contains each dummy name, the gene name and the gene ID for each measurement. These will be paired with the RNA-Seq measurements from the original dataset. With the gene ID in hand, I can use this information to scrape web pages such as [GeneCards] (http://www.genecards.org/cgi-bin/carddisp.pl?gene=ATOH1), [GenBank] (https://www.ncbi.nlm.nih.gov/gene/474), and [KEGG] (http://www.genome.jp/dbget-bin/www_bget?hsa:474) (all examples in the links are for the gene *Atoh1*, gene ID: 474). I will use a combination of web scraping and data-mining to extract information for each gene from these web pages to enrich the orginal dataset. 
+
+###Approach
+The initial objective it to identify features of gene expression for a gene or a set of genes that are unique to tumor types. These could be genes that have statistically significant reduction or upregulation of these genes. A clustering (k-means or hierarchical) model will be applied to the tumor types to see if each tumor analyzed clusters broadly within its tumor subclass, or whether some of these tumors exhibit subgroups within the patients analyzed (we may not have enough cases to give us this power, but the method is sound in general approach). We will then try to establish a principal component analysis model and principal component regression model to attempt to simplify signatures specific to each of these tumors. Ideally, we will then try and implement that model to classify some cases of the tumor for which we have blinded ourselves. 
+
+Once we have some understanding of the significant gene expression differences in these different tumor subtypes, we can apply our web scraping method to collect information on these genes, such as chromosomal location, compartment within the cell that the gene is localized, gene type (e.g. transcription factor, kinase, chromatin modifying enzyme), gene ontology (GO) information, known functions to see if any of these features correlate to tumor subtype.
+
+###Deliverables
+
+* Identification of individual genes that are exhibit statistically significant up- or downregulation of their expression in different tumor types.
+* A principal component model that may show predictive power for tumor classiciation based on RNA-Seq data. 
+* Identification of gene families, attributes, or chromosomal locations that are "hot spots" for aberrant activity in each tumor type.
+
