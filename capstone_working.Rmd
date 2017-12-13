@@ -1,0 +1,251 @@
+---
+title: "Capstone Project Draft 1"
+author: "Ryan Willett"
+output: html_notebook
+---
+
+Import required packages
+```{r}
+library(dplyr)
+library(tidyr)
+library(rvest)
+library(readr)
+library(RSelenium)
+library(ggplot2)
+```
+
+
+Import the data and labels into two data sets. 
+```{r}
+cancer_data <- read.csv("data.csv")
+cancer_labels <- read.csv("labels.csv")
+
+
+```
+
+We must assign each case and the type of cancer that it is with the gene expression data. 
+```{r}
+cancer_join <- left_join(cancer_data, cancer_labels, by = "X")
+```
+Now that we have each analyzed tumor labeled with the proper tumor type and each analyzed gene with the clear gene name. 
+
+The tumor types are: leukemia (**LAML**), lung adenocarcinoma (**LUAD**), lung squamous (**LUSC**), kidney (**KIRC**), bladder (**BLCA**), endometrial (**UCEC**), glioblastoma (**GBM**), head and neck (**HNSC**), breast (**BRCA**), ovarian (**OV**), colon (**COAD**), rectum (**READ**).
+
+###Use hierarchical clustering to determine if there are relationships between the different tumor groups on the basis of gene expression. 
+```{r}
+#First attempt at a hierarchical analysis. This is going to have to do better. Right now it makes an enormous riot of all 801 tumors that is really hard to interpret.
+#Promisingly, there do seem to be 5 large subdivisions of the dendrogram that hopefully will correspond to the tumor classifications upon further analysis.
+d <- dist(as.matrix(cancer_data))
+hc <- hclust(d)
+plot(hc)
+```
+I am soft on the detail of how this works. Particularly, I have to make sure that the Class variable is not being included as this will bias the clustering in the direction expected (partitioning trees by tumor Class).
+
+###Calculate summary dataset of tumor class groups
+
+Calculate the mean and standard deviation for a sample set of genes.
+```{r}
+cancer_sample <- group_by(cancer_join, Class) %>% 
+  summarise(
+    count = n(),
+    
+    mean_geneTP53 = mean(gene_18530, na.rm = TRUE), 
+    sd_TP53 = sd(gene_50, na.rm = TRUE),
+    
+    mean_geneMYC = mean(gene_11402, na.rm = TRUE), 
+    sd_MYC = sd(gene_11402, na.rm = TRUE),
+    
+    mean_geneBRCA1 = mean(gene_1589, na.rm = TRUE),
+    sd_BRCA1 = sd(gene_1589, na.rm = TRUE),
+    
+    mean_geneBRCA2 = mean(gene_1590, na.rm = TRUE), 
+    sd_BRCA2 = sd(gene_1590, na.rm = TRUE),
+    
+    mean_geneGLI1 = mean(gene_7072, na.rm = TRUE),
+    sd_GLI1 = sd(gene_7072, na.rm = TRUE),
+    
+    mean_geneKRAS = mean(gene_9214, na.rm = TRUE),
+    sd_KRAS = sd(gene_9214, na.rm = TRUE),
+    
+    #As a reference, choose a random gene
+    mean_gene53 = mean(gene_53, na.rm = TRUE),
+    sd_KRAS = sd(gene_9214, na.rm = TRUE),
+  )
+cancer_sample
+#These genes may not be expected to change between these tumors. 
+```
+As we can see, there are some interesting and seemingly clear differences in the expression levels a few of these gene in the sample set. This is unsurprising since I have chosen well known tumor suppressors and oncogenes as the examples.
+
+The following findings seem most promising: 
+* *TP53* is low in COAD and KIRC
+* *BRCA1* is low in PRAD
+* *KRAS* is low in COAD
+
+
+###Do any of these show statistically significant differences across tumor types according to ANOVA?
+```{r}
+anova_TP53 <- aov(gene_18530 ~ Class, data = cancer_join)
+
+anova_MYC <- aov(gene_11402 ~ Class, data = cancer_join)
+
+anova_BRCA1 <- aov(gene_1589 ~ Class, data = cancer_join)
+
+anova_BRCA2 <- aov(gene_1590 ~ Class, data = cancer_join)
+
+anova_GLI1 <- aov(gene_7072 ~ Class, data = cancer_join)
+
+anova_KRAS <- aov(gene_9214 ~ Class, data = cancer_join)
+
+anova_53 <- aov(gene_53 ~ Class, data = cancer_join)
+
+summary(anova_TP53)
+summary(anova_MYC)
+summary(anova_BRCA1)
+summary(anova_BRCA2)
+summary(anova_GLI1)
+summary(anova_KRAS)
+summary(anova_53)
+```
+
+```{r}
+tuk_TP53 <- TukeyHSD(anova_TP53)
+tuk_MYC <- TukeyHSD(anova_MYC)
+tuk_BRCA1 <- TukeyHSD(anova_BRCA1)
+tuk_BRCA2 <- TukeyHSD(anova_BRCA2)
+tuk_KRAS <- TukeyHSD(anova_KRAS)
+tuk_gene53 <- TukeyHSD(anova_53)
+
+tuk_TP53
+tuk_MYC
+tuk_BRCA1
+tuk_BRCA2
+tuk_KRAS
+tuk_gene53
+```
+This is a test of the lm() function for **TP53** alone. 
+```{r}
+#Or should I use the lm function for ANOVA?
+
+testing <- lm(gene_18530 ~ Class, data = cancer_join)
+summary(testing)
+```
+
+
+```{r}
+#Retain the 'Class' and 'p adj' columns from the Tukey post doc results (tuk_*), step through the p adj variables and convert to dummy variables if they are signficant to a CI of 0.01.
+
+#WORK IN PROGRESS. THIS BLOCK IS NON-FUNCTIONAL.
+
+#tuk_TP53 <- tuk_TP53$Class[,4]
+#tuk_MYC <- tuk_MYC$Class[,4]
+#tuk_BRCA1 <- tuk_BRCA1$Class[,4]
+#tuk_BRCA2 <- tuk_BRCA2$Class[,4]
+#tuk_KRAS <- tuk_KRAS$Class[,4]
+#tuk_gene53 <- tuk_gene53$Class[,4]
+
+#tuk_pvals <- data.frame(tuk_TP53, tuk_MYC, tuk_BRCA1, tuk_BRCA2, tuk_KRAS, tuk_gene53)
+#tuk_pvals <- add_rownames(tuk_pvals, "Comparison")
+#tuk_pvals %>% mutate(Comparison = gsub("\\-", "\\_", Comparison))
+#tuk_pvals <- t(tuk_pvals)
+
+#tuk_pvals$tuk_TP53 <- ifelse(tuk_pvals$tuk_TP53 <= 0.01, "1", "0")
+
+```
+
+
+Genes with statistically significant difference in expression level between tumors by ANOVA will be assigned a dummy variable in the gene_codes dataframe. 
+
+I seem to be doing this wrong, because all genes seem to be coming back as highly significant. 
+
+As a point of comparison...
+
+Here is the blot for expression level of TP53 in the tumors
+```{r}
+ggplot(cancer_join, aes(x = Class, y = gene_18530, col = Class)) + 
+  geom_jitter(alpha = 0.6) + 
+  ylab("TP53 expression") + 
+  labs(title = "TP53 expression level diminished in COAD and KIRC")
+```
+There is a clear downregulation evident in the levels of TP53 expression in COAD and KIRC. 
+
+And here is the plot for gene_1 in set
+```{r}
+ggplot(cancer_join, aes(x = Class, y = gene_53, col = Class)) + geom_jitter(alpha = 0.6) + 
+  ylab("gene_53 expression") + 
+  labs(title = "gene_53 expression level invariant across tumors")
+```
+The distributions appear extremely similar. 
+
+The ANOVA results should reflect this, so need to figure out in the next week what is wrong.
+
+
+###Generation of the gene_codes dataset
+
+Import the unc.edu_PANCAN_IlluminaGA_RNASeqV2.geneExp from the Synapse repository to get the gene name and gene ID for all 20531 genes. They are in the first column labeled "gene_id" and are in the format "gene name | gene id". Strip out this column, separate the gene name and gene ID into separate columns, and build another column with the dummy variable names corresponding to the probes in "data.csv". Ultimately, additional columns will be appended onto the dataset as the webscraping data methods become functional.
+
+This code block does not have to be run after "gene_information.csv" has been generated.
+```{r}
+#Imports in only a couple columns from PANCAN_RNAseq.tsv .
+#This is done because the table takes a VERY long time to load and we only need the first column of information. 
+gene_codes <- read.table(pipe("cut -f1,5 PANCAN_RNAseq.tsv"))
+
+#deletes the extra column that we do not need. I haven't been able to figure out how import only column #1. 
+gene_codes$V2 <- NULL
+
+#Separates the pipe-delineated "name|id" columns as individual "gene name" and "gene ID" columns. Then the first row is deleted, since it contains carryover label information and not data.
+gene_codes <- gene_codes %>% separate(V1, c("gene_name", "gene_ID"), "\\|")
+gene_codes <- gene_codes[2:nrow(gene_codes), ]
+```
+
+```{r}
+#Write out the new dataset as a CSV file, because it is more convenient to load than the original .tsv file
+write.csv(gene_codes, file = "gene_information.csv", row.names = FALSE)
+```
+
+
+###Prototype for enriching data set with web scraped data
+This section is to prototype building up additional data to the dataset for a small set of genes
+```{r}
+cancer_subset <- gene_codes[50:55, ]
+cancer_subset 
+
+genbank <- "https://www.ncbi.nlm.nih.gov/gene/"
+#Loop function to step through "gene_ID"" of the data set to scrape data into additional columns. Right now it only prints the urls to scrape. Once the scraping methods have been written, they will be entered in the loop and the data collected.
+scrape <- function(x) {
+  url <- paste(genbank,x, sep = "")
+}
+
+lapply(cancer_subset$gene_ID, scrape)
+```
+
+
+
+
+###Additional information we can glean through webscraping:
+* Chromosome position
+* amino acid sequence of the protein
+* nucleotide sequence of the ORF. 
+* Definition. 
+* Are structure solved?
+* GO compartment/process/component/function
+* Jensen-TM (text mined tissue expression data)
+
+###Scraping prototypes
+From what I can tell, the rvest package is effective at scraping static webpages, but several of the repositories that I am trying to scrape from return with the "character(0)" complaint. I will need to learn how to use Phantom.js or RSelenium to scrape dynamic pages to get this information.
+```{r}
+testing <- read_html("https://www.ncbi.nlm.nih.gov/gene/15")
+
+#chromosomal location - Working
+gene_location <- testing %>% html_nodes(".dl-chr-info span") %>% html_text()
+gene_location
+
+#location - FAILS
+gene_compartment <- testing %>% html_nodes("#ui-ncbigrid-27 td:nth-child(1) a") %>% html_text()
+gene_compartment
+
+#gene ontology function
+gene_GO <- testing %>% html_nodes("p+ table tr:nth-child(2) td:nth-child(2)") %>% html_text()
+gene_GO
+```
+
+
