@@ -12,6 +12,8 @@ library(rvest)
 library(readr)
 library(RSelenium)
 library(ggplot2)
+library(dendextend)
+setwd("~/Documents/GitHub/IntroDataScience_capstone")
 ```
 
 
@@ -33,13 +35,51 @@ The tumor types are: leukemia (**LAML**), lung adenocarcinoma (**LUAD**), lung s
 
 ###Use hierarchical clustering to determine if there are relationships between the different tumor groups on the basis of gene expression. 
 ```{r}
-#First attempt at a hierarchical analysis. This is going to have to do better. Right now it makes an enormous riot of all 801 tumors that is really hard to interpret.
-#Promisingly, there do seem to be 5 large subdivisions of the dendrogram that hopefully will correspond to the tumor classifications upon further analysis.
+#Attempt at a hierarchical analysis.
+#Promisingly, there do seem to be 5 large subdivisions of the dendrogram. Do they correspond to the tumor classifications?
 d <- dist(as.matrix(cancer_data))
 hc <- hclust(d)
-plot(hc)
+hc <- as.dendrogram(hc)
+
+#Plot the data
+#cols_branches <- c("blue", "green", "red", "black", "orange")
+dend <- color_branches(hc, k=5, col = c("blue", "green", "red", "black", "orange"))
+plot(dend, main = "Clustering Based on 5 Classes")
 ```
-I am soft on the detail of how this works. Particularly, I have to make sure that the Class variable is not being included as this will bias the clustering in the direction expected (partitioning trees by tumor Class).
+
+```{r}
+
+#Select out clusters based on 5 classes (because we have 5 tumor types). Bind these groups information to the original dataset
+groups <- cutree(hc, k=5)
+cancer_join <- cbind(cancer_join, groups)
+#Selecting out the different tumor classifications based on the clustering group. 
+hc1 <- subset(cancer_join$Class, groups==1)
+hc2 <- subset(cancer_join$Class, groups==2)
+hc3 <- subset(cancer_join$Class, groups==3)
+hc4 <- subset(cancer_join$Class, groups==4)
+hc5 <- subset(cancer_join$Class, groups==5)
+
+subtype_freq <- data.frame(table(hc1), table(hc2), table(hc3), table(hc4), table(hc5))
+
+subtype_freq
+
+cancer_pie1 <- ggplot(subtype_freq, aes(x="", y=Freq, fill = hc1)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y") + labs("Cluster 1: Prostate adnocarinoma")
+cancer_pie1
+ 
+cancer_pie2 <- ggplot(subtype_freq, aes(x="", y=Freq.1, fill = hc1)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y") + labs("Cluster 2: Highly enriched for lung adenocarcinoma (LUAD), but with some colon adenocarcinoma (COAD) and breast cancer (BRCA)")
+cancer_pie2
+
+cancer_pie3 <- ggplot(subtype_freq, aes(x="", y=Freq.2, fill = hc1)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y") + labs("Cluster 3: Most breast tumor (BRCA) patient samples fall into this group")
+cancer_pie3
+
+cancer_pie4 <- ggplot(subtype_freq, aes(x="", y=Freq.3, fill = hc1)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y") + labs("Cluster 4: All kidney tumor cluster well together")
+cancer_pie4
+
+cancer_pie5 <- ggplot(subtype_freq, aes(x="", y=Freq.4, fill = hc1)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y") + labs("Cluster 5: Colon adenocarcinoma (COAD) with a few cases of breast (BRCA)")
+cancer_pie5
+
+#Create loops method that quantifies each incidence of each tumor type in the cluster group.
+```
 
 ###Calculate summary dataset of tumor class groups
 
@@ -69,7 +109,7 @@ cancer_sample <- group_by(cancer_join, Class) %>%
     
     #As a reference, choose a random gene
     mean_gene53 = mean(gene_53, na.rm = TRUE),
-    sd_KRAS = sd(gene_9214, na.rm = TRUE),
+    sd_KRAS = sd(gene_9214, na.rm = TRUE)
   )
 cancer_sample
 #These genes may not be expected to change between these tumors. 
@@ -122,14 +162,6 @@ tuk_BRCA2
 tuk_KRAS
 tuk_gene53
 ```
-This is a test of the lm() function for **TP53** alone. 
-```{r}
-#Or should I use the lm function for ANOVA?
-
-testing <- lm(gene_18530 ~ Class, data = cancer_join)
-summary(testing)
-```
-
 
 ```{r}
 #Retain the 'Class' and 'p adj' columns from the Tukey post doc results (tuk_*), step through the p adj variables and convert to dummy variables if they are signficant to a CI of 0.01.
@@ -200,6 +232,10 @@ gene_codes <- gene_codes[2:nrow(gene_codes), ]
 ```{r}
 #Write out the new dataset as a CSV file, because it is more convenient to load than the original .tsv file
 write.csv(gene_codes, file = "gene_information.csv", row.names = FALSE)
+```
+
+```{r}
+gene_codes <- read.csv("gene_information.csv")
 ```
 
 
