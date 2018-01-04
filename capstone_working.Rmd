@@ -5,12 +5,13 @@ output: html_notebook
 ---
 
 Import required packages
-```{r}
+```{r warning = FALSE, }
 library(dplyr)
 library(tidyr)
 library(rvest)
 library(readr)
 library(RSelenium)
+library(XML)
 library(ggplot2)
 library(dendextend)
 setwd("~/Documents/GitHub/IntroDataScience_capstone")
@@ -63,34 +64,56 @@ subtype_freq <- data.frame(table(hc1), table(hc2), table(hc3), table(hc4), table
 
 subtype_freq
 
-cancer_pie1 <- ggplot(subtype_freq, aes(x="", y=Freq, fill = hc1)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y") + labs("Cluster 1: Prostate adnocarinoma")
+cancer_pie1 <- ggplot(subtype_freq, aes(x="", y=Freq, fill = hc1)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y") + labs(title = "Cluster 1: Prostate adnocarinoma only")
 cancer_pie1
  
-cancer_pie2 <- ggplot(subtype_freq, aes(x="", y=Freq.1, fill = hc1)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y") + labs("Cluster 2: Highly enriched for lung adenocarcinoma (LUAD), but with some colon adenocarcinoma (COAD) and breast cancer (BRCA)")
+cancer_pie2 <- ggplot(subtype_freq, aes(x="", y=Freq.1, fill = hc1)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y") + labs(title = "Cluster 2: Highly enriched for LUAD, minor COAD and BRCA")
 cancer_pie2
 
-cancer_pie3 <- ggplot(subtype_freq, aes(x="", y=Freq.2, fill = hc1)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y") + labs("Cluster 3: Most breast tumor (BRCA) patient samples fall into this group")
+cancer_pie3 <- ggplot(subtype_freq, aes(x="", y=Freq.2, fill = hc1)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y") + labs(title = "Cluster 3: BRCA tumor enriched")
 cancer_pie3
 
-cancer_pie4 <- ggplot(subtype_freq, aes(x="", y=Freq.3, fill = hc1)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y") + labs("Cluster 4: All kidney tumor cluster well together")
+cancer_pie4 <- ggplot(subtype_freq, aes(x="", y=Freq.3, fill = hc1)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y") + labs(title = "Cluster 4: KIRC tumors alone")
 cancer_pie4
 
-cancer_pie5 <- ggplot(subtype_freq, aes(x="", y=Freq.4, fill = hc1)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y") + labs("Cluster 5: Colon adenocarcinoma (COAD) with a few cases of breast (BRCA)")
+cancer_pie5 <- ggplot(subtype_freq, aes(x="", y=Freq.4, fill = hc1)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y") + labs(title = "Cluster 5: COAD enriched with a few BRCA cases")
 cancer_pie5
 
 #Create loops method that quantifies each incidence of each tumor type in the cluster group.
 ```
+The minority tumor types in 2, 3, and 5 can be explained by a number of reasons. 
+* These tumor types are misdiagnosed.
+* The majority and minority tumor types in the cluster arose from a similar cell-of-origin that is present in both tissues (e.g. similar cell type present in both breast and colon). 
+* The minority tumor type may be metastasized tumors from other primary sites (e.g. breast cancer metastasized to colon in the example of cluster 5).
+* The mutagenic etiology of the tumor genetically resemble each other due to the type of tumor produced (e.g. similarities in colon and lung adenocarcinoma tumors in cluster 2 are due to them both being adenocarcinoma tumors. Interestingly the prostate adenocarcinoma are very distinct from colon and lung).
 
 ###Calculate summary dataset of tumor class groups
 
+```{r}
+#Building out a stub for a loop function to iterate over columns of data table "cancer_join" (gene_#)
+small_gset <- c("gene_18530", "gene_11402", "gene_1589", "gene_7072", "gene_9212", "gene_53")
+small_gset <- t(small_gset) #Convert single columns to single row
+for(i in 1:ncol(small_gset)){print(small_gset[,i])} #Loop across the row.
+```
+
+
+
 Calculate the mean and standard deviation for a sample set of genes.
 ```{r}
-cancer_sample <- group_by(cancer_join, Class) %>% 
-  summarise(
-    count = n(),
+#CODE BLOCK IS NON-FUNCTIONAL
+
+cancer_sample <- cancer_join %>% group_by(Class) %>% 
+    summarise(
+      count = n(),
+  
+  for (i in 1:ncol(small_gset)) {
+    
+    mean_geneTP53 = mean(paste("cancer_join$gene_", i, sep = "") na.rm = TRUE), 
+    sd_TP53 = sd(gene_50, na.rm = TRUE)
+  
     
     mean_geneTP53 = mean(gene_18530, na.rm = TRUE), 
-    sd_TP53 = sd(gene_50, na.rm = TRUE),
+    sd_TP53 = sd(gene_18530, na.rm = TRUE),
     
     mean_geneMYC = mean(gene_11402, na.rm = TRUE), 
     sd_MYC = sd(gene_11402, na.rm = TRUE),
@@ -107,10 +130,11 @@ cancer_sample <- group_by(cancer_join, Class) %>%
     mean_geneKRAS = mean(gene_9214, na.rm = TRUE),
     sd_KRAS = sd(gene_9214, na.rm = TRUE),
     
-    #As a reference, choose a random gene
+    As a reference, choose a random gene
     mean_gene53 = mean(gene_53, na.rm = TRUE),
     sd_KRAS = sd(gene_9214, na.rm = TRUE)
   )
+}
 cancer_sample
 #These genes may not be expected to change between these tumors. 
 ```
@@ -166,22 +190,30 @@ tuk_gene53
 ```{r}
 #Retain the 'Class' and 'p adj' columns from the Tukey post doc results (tuk_*), step through the p adj variables and convert to dummy variables if they are signficant to a CI of 0.01.
 
-#WORK IN PROGRESS. THIS BLOCK IS NON-FUNCTIONAL.
+#WORK IN PROGRESS. This blocks is functional for the gene set. Loop needs to be written to apply this method to all genes.
 
-#tuk_TP53 <- tuk_TP53$Class[,4]
-#tuk_MYC <- tuk_MYC$Class[,4]
-#tuk_BRCA1 <- tuk_BRCA1$Class[,4]
-#tuk_BRCA2 <- tuk_BRCA2$Class[,4]
-#tuk_KRAS <- tuk_KRAS$Class[,4]
-#tuk_gene53 <- tuk_gene53$Class[,4]
+tuk_TP53 <- tuk_TP53$Class[,4]
+tuk_TP53 <- ifelse(tuk_TP53 <= 0.01, 1, 0)
 
-#tuk_pvals <- data.frame(tuk_TP53, tuk_MYC, tuk_BRCA1, tuk_BRCA2, tuk_KRAS, tuk_gene53)
-#tuk_pvals <- add_rownames(tuk_pvals, "Comparison")
-#tuk_pvals %>% mutate(Comparison = gsub("\\-", "\\_", Comparison))
-#tuk_pvals <- t(tuk_pvals)
+tuk_MYC <- as.numeric(tuk_MYC$Class[,4])
+tuk_MYC <- ifelse(tuk_MYC <= 0.01, 1, 0)
 
-#tuk_pvals$tuk_TP53 <- ifelse(tuk_pvals$tuk_TP53 <= 0.01, "1", "0")
+tuk_BRCA1 <- as.numeric(tuk_BRCA1$Class[,4])
+tuk_BRCA1 <- ifelse(tuk_BRCA1 <= 0.01, 1, 0)
 
+tuk_BRCA2 <- as.numeric(tuk_BRCA2$Class[,4])
+tuk_BRCA2 <- ifelse(tuk_BRCA2 <= 0.01, 1, 0)
+
+tuk_KRAS <- as.numeric(tuk_KRAS$Class[,4])
+tuk_KRAS <- ifelse(tuk_KRAS <= 0.01, 1, 0)
+
+tuk_gene53 <- as.numeric(tuk_gene53$Class[,4])
+tuk_gene53 <- ifelse(tuk_gene53 <= 0.01, 1, 0)
+
+tuk_pvals <- data.frame(tuk_TP53, tuk_MYC, tuk_BRCA1, tuk_BRCA2, tuk_KRAS, tuk_gene53)
+
+#Transpose the vector so the genes are in the rows and the Tukey p-value comparisons are in the columns. 
+tuk_pvals <- t(tuk_pvals)
 ```
 
 
@@ -219,6 +251,8 @@ This code block does not have to be run after "gene_information.csv" has been ge
 ```{r}
 #Imports in only a couple columns from PANCAN_RNAseq.tsv .
 #This is done because the table takes a VERY long time to load and we only need the first column of information. 
+
+#The PANCAN_RNAseq.tsv files has to be provided by a host other than GitHub because it is too large. 
 gene_codes <- read.table(pipe("cut -f1,5 PANCAN_RNAseq.tsv"))
 
 #deletes the extra column that we do not need. I haven't been able to figure out how import only column #1. 
@@ -235,6 +269,7 @@ write.csv(gene_codes, file = "gene_information.csv", row.names = FALSE)
 ```
 
 ```{r}
+#Read in the gene code (gene name and gene ID) saved in the previous block for quicker run times.
 gene_codes <- read.csv("gene_information.csv")
 ```
 
@@ -284,4 +319,23 @@ gene_GO <- testing %>% html_nodes("p+ table tr:nth-child(2) td:nth-child(2)") %>
 gene_GO
 ```
 
+```{r echo = FALSE}
+#Used the code provided by mentor Amit 
+remDr <- remoteDriver(remoteServerAddr = "localhost"
+                      , port = 4445L
+                      , browserName = "firefox"
+)
 
+remDr$open() # Throws error that resContent[["status"]]: subscript out of bounds
+
+remDr$navigate("https://www.ncbi.nlm.nih.gov/gene/15")
+
+
+elem1 <- remDr$findElement(using = "css", value = "#ui-ncbigrid-23 tr:nth-child(5) td:nth-child(1) a") #get big table in text string
+elemtxt1 <- elem$getElementAttribute("innerHTML")[[1]] #get us the HTML
+
+elem2 <- remDr$findElement(using = "css", value = "#ui-ncbigrid-27 tr~ tr+ tr a") #get big table in text string
+#elem$highlightElement() #just for interactive use in browser. not necessary. 
+elemtxt2 <- elem$getElementAttribute("innerHTML")[[1]] #get us the HTML
+#elemxml <- htmlTreeParse(elemtxt, userInternalNodes = TRUE) #parse string into HTML tree to allow for querying with XPath
+```
