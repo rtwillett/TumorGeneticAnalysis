@@ -17,6 +17,14 @@ library(dendextend)
 setwd("~/Documents/GitHub/IntroDataScience_capstone")
 ```
 
+```{r}
+#ACTION ITEMS TO BUILD INTO THE CODE
+###Column loop function to iterate through genes. 
+###Generalizable means to scrape the chromosomal location and GO categories for every gene.
+```
+
+
+
 
 Import the data and labels into two data sets. 
 ```{r}
@@ -100,16 +108,14 @@ for(i in 1:ncol(small_gset)){print(small_gset[,i])} #Loop across the row.
 
 Calculate the mean and standard deviation for a sample set of genes.
 ```{r}
-#CODE BLOCK IS NON-FUNCTIONAL
+#CODE BLOCK IS TEMPORARILY NON-FUNCTIONAL AS I BUILD OUT MEAN/SD TO LOOP THROUGH ALL GENES
 
 cancer_sample <- cancer_join %>% group_by(Class) %>% 
-    summarise(
+    summarise() {
       count = n(),
-  
-  for (i in 1:ncol(small_gset)) {
     
     mean_geneTP53 = mean(paste("cancer_join$gene_", i, sep = "") na.rm = TRUE), 
-    sd_TP53 = sd(gene_50, na.rm = TRUE)
+    sd_TP53 = sd(gene_50, na.rm = TRUE),
   
     
     mean_geneTP53 = mean(gene_18530, na.rm = TRUE), 
@@ -133,7 +139,6 @@ cancer_sample <- cancer_join %>% group_by(Class) %>%
     As a reference, choose a random gene
     mean_gene53 = mean(gene_53, na.rm = TRUE),
     sd_KRAS = sd(gene_9214, na.rm = TRUE)
-  )
 }
 cancer_sample
 #These genes may not be expected to change between these tumors. 
@@ -304,38 +309,39 @@ lapply(cancer_subset$gene_ID, scrape)
 ###Scraping prototypes
 From what I can tell, the rvest package is effective at scraping static webpages, but several of the repositories that I am trying to scrape from return with the "character(0)" complaint. I will need to learn how to use Phantom.js or RSelenium to scrape dynamic pages to get this information.
 ```{r}
+#Web scraping strategy using the rvest package.
 testing <- read_html("https://www.ncbi.nlm.nih.gov/gene/15")
 
 #chromosomal location - Working
-gene_location <- testing %>% html_nodes(".dl-chr-info span") %>% html_text()
-gene_location
+#gene_location <- testing %>% html_nodes(".dl-chr-info span") %>% html_text()
+#gene_location
 
-#location - FAILS
-gene_compartment <- testing %>% html_nodes("#ui-ncbigrid-27 td:nth-child(1) a") %>% html_text()
-gene_compartment
-
-#gene ontology function
-gene_GO <- testing %>% html_nodes("p+ table tr:nth-child(2) td:nth-child(2)") %>% html_text()
-gene_GO
 ```
 
 ```{r echo = FALSE}
-#Used the code provided by mentor Amit 
+#Web scraping strategy using the RSelenium package.
+#Adapted the code provided by mentor Amit 
+#This is the code to scrape the chromosomal location information, gene ontology (GO) function, GO process, and GO compartment data from the GenBank entry of a single gene.
 remDr <- remoteDriver(remoteServerAddr = "localhost"
                       , port = 4445L
                       , browserName = "firefox"
 )
 
-remDr$open() # Throws error that resContent[["status"]]: subscript out of bounds
+remDr$open()
 
 remDr$navigate("https://www.ncbi.nlm.nih.gov/gene/15")
 
+#Scrape the chromosomal location for the gene.
+gene_location <- remDr$findElement(using="css selector", value=".dl-chr-info span")
+gene_location <- gene_location$getElementAttribute("innerHTML")[[1]]
 
-elem1 <- remDr$findElement(using = "css", value = "#ui-ncbigrid-23 tr:nth-child(5) td:nth-child(1) a") #get big table in text string
-elemtxt1 <- elem$getElementAttribute("innerHTML")[[1]] #get us the HTML
+#Scrape the gene ontology (GO) tables to gene information about those genes.
+hsource <- htmlParse(remDr$getPageSource()[[1]])
+htables <- readHTMLTable(hsource)
 
-elem2 <- remDr$findElement(using = "css", value = "#ui-ncbigrid-27 tr~ tr+ tr a") #get big table in text string
-#elem$highlightElement() #just for interactive use in browser. not necessary. 
-elemtxt2 <- elem$getElementAttribute("innerHTML")[[1]] #get us the HTML
-#elemxml <- htmlTreeParse(elemtxt, userInternalNodes = TRUE) #parse string into HTML tree to allow for querying with XPath
+#These lists of lists are different for every gene. I need a generalizable way to pull these tables and keep these 3 that I care about. 
+gene_function <- unique(htables$`ui-ncbigrid-19`$Function)
+gene_process <- unique(htables$`ui-ncbigrid-23`$Process)
+gene_compartment <- unique(htables$`ui-ncbigrid-27`$Component)
+
 ```
