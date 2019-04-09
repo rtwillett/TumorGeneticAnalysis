@@ -1,0 +1,332 @@
+---
+title: "Capstone Project Draft 1"
+author: "Ryan Willett"
+output: html_notebook
+---
+
+Import required packages
+```{r warning = FALSE, echo=F}
+library(dplyr)
+library(tidyr)
+library(rvest)
+library(readr)
+library(RSelenium)
+library(XML)
+library(ggplot2)
+library(dendextend)
+library(factoextra)
+setwd("~/NYCDSA/PANCAN")
+```
+
+
+Import the data and labels into two data sets. 
+```{r}
+cancer_data <- read.csv("data.csv")
+cancer_labels <- read.csv("labels.csv")
+gene_labels <- read.csv("gene_information.csv")
+```
+
+We must assign each case and the type of cancer that it is with the gene expression data. 
+
+Unlabeled Dataset
+```{r}
+# Renaming rows to the sample ID
+rownames(cancer_data) <- cancer_data$X 
+cancer_data$X <- NULL  # Removing the sample ID column
+
+# Renaming the column gene number on the microarray to the gene name
+colnames(cancer_data) <- gene_labels$gene_name
+rm(gene_labels)
+```
+
+Labeled Dataset
+```{r}
+# Binding the tumor diagnosis to the dataset
+cancer_join <- cbind(cancer_data, cancer_labels)
+cancer_join$X <- NULL # Removing the X column (sample number)
+rm(cancer_labels)
+```
+
+
+Now that we have each analyzed tumor labeled with the proper tumor type and each analyzed gene with the clear gene name. 
+
+The tumor types are: lung adenocarcinoma (**LUAD**), kidney renal clear cell carcinoma(**KIRC**), breast invasive carcinoma(**BRCA**), colon adenocarcinoma (**COAD**), prostate adenocarcinoma(**PRAD**).
+
+https://gdc.cancer.gov/resources-tcga-users/tcga-code-tables/tcga-study-abbreviations
+
+###Use hierarchical clustering to determine if there are relationships between the different tumor groups on the basis of gene expression. 
+```{r}
+
+d <- dist(as.matrix(cancer_data)) #cancer_data is used so as not to bias the clustering with the known tumor classification in cancer_join
+cat_n <- 5
+hc <- hclust(d, method="ward.D")
+hc <- as.dendrogram(hc)
+
+#Plot the data
+#cols_branches <- c("blue", "green", "red", "black", "orange")
+dend <- color_branches(hc, k=cat_n, col = c("blue", "green", "red", "black", "orange"))
+labels(dend) <- NULL # Remove labels because they make the image too busy
+plot(dend, main = "Clustering Based on 5 Classes")
+```
+
+```{r}
+
+#Select out clusters based on 5 classes (because we have 5 tumor types). Bind these groups information to the original dataset
+groups <- cutree(hc, k=5)
+cancer_join <- cbind(cancer_join, groups)
+#Selecting out the different tumor classifications based on the clustering group. 
+```
+
+```{r}
+tree_split_class <- function(dg, g) {
+  hcX <- subset(dg, groups==g)
+  return(hcX)
+}
+
+results <- list()
+for (i in 1:cat_n) {
+  results[[i]] <- tree_split_class(cancer_join$Class, i)
+}
+```
+
+```{r}
+class_summary <- sapply(results, table)
+colnames(class_summary) <- c("Group1", "Group2", "Group3", "Group4", "Group5")
+
+class_summary <- as.data.frame(class_summary)
+class_summary$Class <- row.names(class_summary)
+class_summary <- class_summary %>% gather(key="Group", value="Value", 1:5, na.rm=T)
+
+classplot <- ggplot(class_summary, aes(x=Class, y=Value, fill=Group)) +
+  facet_grid(.~ Group) +
+  geom_bar(stat="identity", position = "dodge") +
+  theme_classic()
+classplot
+
+#Create loops method that quantifies each incidence of each tumor type in the cluster group.
+```
+
+Calculate the mean and standard deviation for a sample set of genes.
+```{r}
+
+cancer_sample_means <- cancer_join[1:50, ] %>% group_by(Class) %>% summarise_all(mean)
+cancer_sample_sd <- cancer_join %>% group_by(Class) %>% summarise_all(sd)
+
+```
+
+```{r}
+#cancer_sample_aov <- cancer_join %>% group_by(Class) %>% summarise_all(pvalue= aov)
+```
+
+This dumps the output from the Means and Standard Deviation calculations 
+```{r}
+write.csv(cancer_sample_means, file="cancer_means.csv")
+write.csv(cancer_sample_sd, file="cancer_sd.csv")
+
+
+```
+
+
+###Do any of these show statistically significant differences across tumor types according to ANOVA?
+```{r}
+cancer_sample_aov <- cancer_sample %>% group_by(Class) %>% summarise_all(aov)
+```
+
+```{r}
+write.csv(cancer_sample_aov, file="cancer_aov.csv")
+```
+
+
+```{r}
+
+anova_TP53 <- aov(TP53 ~ Class, data = cancer_join)
+
+summary(anova_TP53)
+
+```
+
+```{r}
+tuk_TP53 <- TukeyHSD(anova_TP53)
+
+tuk_TP53
+
+```
+
+```{r}
+#Retain the 'Class' and 'p adj' columns from the Tukey post doc results (tuk_*), step through the p adj variables and convert to dummy variables if they are signficant to a CI of 0.01.
+
+#WORK IN PROGRESS. This blocks is functional for the gene set. Loop needs to be written to apply this method to all genes.
+
+tuk_TP53 <- tuk_TP53$Class[,4]
+tuk_TP53 <- ifelse(tuk_TP53 <= 0.01, 1, 0)
+
+tuk_pvals <- data.frame(tuk_TP53)
+
+#Transpose the vector so the genes are in the rows and the Tukey p-value comparisons are in the columns. 
+tuk_pvals <- t(tuk_pvals)
+```
+
+#Trying out PCA
+```{r}
+library(FactoMineR)
+cancer_data$X <- NULL 
+pca1=prcomp(cancer_data, graph= FALSE)
+
+```
+
+###Generation of the gene_codes dataset
+
+Import the unc.edu_PANCAN_IlluminaGA_RNASeqV2.geneExp from the Synapse repository to get the gene name and gene ID for all 20531 genes. They are in the first column labeled "gene_id" and are in the format "gene name | gene id". Strip out this column, separate the gene name and gene ID into separate columns, and build another column with the dummy variable names corresponding to the probes in "data.csv". Ultimately, additional columns will be appended onto the dataset as the webscraping data methods become functional.
+
+This code block does not have to be run after "gene_information.csv" has been generated.
+```{r}
+#Imports in only a couple columns from PANCAN_RNAseq.tsv .
+#This is done because the table takes a VERY long time to load and we only need the first column of information. 
+
+#The PANCAN_RNAseq.tsv files has to be provided by a host other than GitHub because it is too large. 
+gene_codes <- read.table(pipe("cut -f1,5 PANCAN_RNAseq.tsv"))
+
+#deletes the extra column that we do not need. I haven't been able to figure out how import only column #1. 
+gene_codes$V2 <- NULL
+
+#Separates the pipe-delineated "name|id" columns as individual "gene name" and "gene ID" columns. Then the first row is deleted, since it contains carryover label information and not data.
+gene_codes <- gene_codes %>% separate(V1, c("gene_name", "gene_ID"), "\\|")
+gene_codes <- gene_codes[2:nrow(gene_codes), ]
+```
+
+```{r}
+#Write out the new dataset as a CSV file, because it is more convenient to load than the original .tsv file
+write.csv(gene_codes, file = "gene_information.csv", row.names = FALSE)
+```
+
+
+```{r }
+scores <- as.data.frame(pca1$x)
+
+ggplot(data = scores, aes(x = PC1, y = PC2, label = rownames(scores))) +
+  geom_hline(yintercept = 0, colour = "gray65") +
+  geom_vline(xintercept = 0, colour = "gray65") +
+  geom_text(colour = "tomato", alpha = 0.8, size = 4) +
+  ggtitle("PCA plot of USA States - Crime Rates")
+```
+
+
+
+Genes with statistically significant difference in expression level between tumors by ANOVA will be assigned a dummy variable in the gene_codes dataframe. 
+
+I seem to be doing this wrong, because all genes seem to be coming back as highly significant. 
+
+As a point of comparison...
+
+Here is the blot for expression level of TP53 in the tumors
+```{r}
+ggplot(cancer_join, aes(x = Class, y = TP53, col = Class)) + 
+  geom_violin() + 
+  geom_jitter(alpha = 0.6) + 
+  ylab("TP53 expression") + 
+  labs(title = "TP53 expression level diminished in COAD and KIRC") +
+  theme_classic()
+```
+
+The distributions appear extremely similar. 
+
+The ANOVA results should reflect this, so need to figure out in the next week what is wrong.
+
+
+###Generation of the gene_codes dataset
+
+Import the unc.edu_PANCAN_IlluminaGA_RNASeqV2.geneExp from the Synapse repository to get the gene name and gene ID for all 20531 genes. They are in the first column labeled "gene_id" and are in the format "gene name | gene id". Strip out this column, separate the gene name and gene ID into separate columns, and build another column with the dummy variable names corresponding to the probes in "data.csv". Ultimately, additional columns will be appended onto the dataset as the webscraping data methods become functional.
+
+This code block does not have to be run after "gene_information.csv" has been generated.
+```{r}
+#Imports in only a couple columns from PANCAN_RNAseq.tsv .
+#This is done because the table takes a VERY long time to load and we only need the first column of information. 
+
+#The PANCAN_RNAseq.tsv files has to be provided by a host other than GitHub because it is too large. 
+gene_codes <- read.table(pipe("cut -f1,5 PANCAN_RNAseq.tsv"))
+
+#deletes the extra column that we do not need. I haven't been able to figure out how import only column #1. 
+gene_codes$V2 <- NULL
+
+#Separates the pipe-delineated "name|id" columns as individual "gene name" and "gene ID" columns. Then the first row is deleted, since it contains carryover label information and not data.
+gene_codes <- gene_codes %>% separate(V1, c("gene_name", "gene_ID"), "\\|")
+gene_codes <- gene_codes[2:nrow(gene_codes), ]
+```
+
+```{r}
+#Write out the new dataset as a CSV file, because it is more convenient to load than the original .tsv file
+write.csv(gene_codes, file = "gene_information.csv", row.names = FALSE)
+```
+
+```{r}
+#Read in the gene code (gene name and gene ID) saved in the previous block for quicker run times.
+gene_codes <- read.csv("gene_information.csv")
+```
+
+
+###Prototype for enriching data set with web scraped data
+This section is to prototype building up additional data to the dataset for a small set of genes
+```{r}
+cancer_subset <- gene_codes[50:55, ]
+cancer_subset 
+
+genbank <- "https://www.ncbi.nlm.nih.gov/gene/"
+#Loop function to step through "gene_ID"" of the data set to scrape data into additional columns. Right now it only prints the urls to scrape. Once the scraping methods have been written, they will be entered in the loop and the data collected.
+scrape <- function(x) {
+  url <- paste(genbank,x, sep = "")
+}
+
+lapply(cancer_subset$gene_ID, scrape)
+```
+
+
+
+
+###Additional information we can glean through webscraping:
+* Chromosome position
+* amino acid sequence of the protein
+* nucleotide sequence of the ORF. 
+* Definition. 
+* Are structure solved?
+* GO compartment/process/component/function
+* Jensen-TM (text mined tissue expression data)
+
+###Scraping prototypes
+From what I can tell, the rvest package is effective at scraping static webpages, but several of the repositories that I am trying to scrape from return with the "character(0)" complaint. I will need to learn how to use Phantom.js or RSelenium to scrape dynamic pages to get this information.
+```{r}
+#Web scraping strategy using the rvest package.
+testing <- read_html("https://www.ncbi.nlm.nih.gov/gene/15")
+
+#chromosomal location - Working
+#gene_location <- testing %>% html_nodes(".dl-chr-info span") %>% html_text()
+#gene_location
+
+```
+
+```{r echo = FALSE}
+#Web scraping strategy using the RSelenium package.
+#Adapted the code provided by mentor Amit 
+#This is the code to scrape the chromosomal location information, gene ontology (GO) function, GO process, and GO compartment data from the GenBank entry of a single gene.
+remDr <- remoteDriver(remoteServerAddr = "localhost"
+                      , port = 4445L
+                      , browserName = "firefox"
+)
+
+remDr$open()
+
+remDr$navigate("https://www.ncbi.nlm.nih.gov/gene/15")
+
+#Scrape the chromosomal location for the gene.
+gene_location <- remDr$findElement(using="css selector", value=".dl-chr-info span")
+gene_location <- gene_location$getElementAttribute("innerHTML")[[1]]
+
+#Scrape the gene ontology (GO) tables to gene information about those genes.
+hsource <- htmlParse(remDr$getPageSource()[[1]])
+htables <- readHTMLTable(hsource)
+
+#These lists of lists are different for every gene. I need a generalizable way to pull these tables and keep these 3 that I care about. 
+gene_function <- unique(htables$`ui-ncbigrid-19`$Function)
+gene_process <- unique(htables$`ui-ncbigrid-23`$Process)
+gene_compartment <- unique(htables$`ui-ncbigrid-27`$Component)
+
+```
